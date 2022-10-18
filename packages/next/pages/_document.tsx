@@ -310,35 +310,6 @@ function getPreNextWorkerScripts(context: HtmlProps, props: OriginProps) {
   }
 }
 
-function getPreNextScripts(context: HtmlProps, props: OriginProps) {
-  const { scriptLoader, disableOptimizedLoading, crossOrigin } = context
-
-  const webWorkerScripts = getPreNextWorkerScripts(context, props)
-
-  const beforeInteractiveScripts = (scriptLoader.beforeInteractive || [])
-    .filter((script) => script.src && script.order === undefined)
-    .map((file: ScriptProps, index: number) => {
-      const { strategy, ...scriptProps } = file
-      return (
-        <script
-          {...scriptProps}
-          key={scriptProps.src || index}
-          defer={scriptProps.defer ?? !disableOptimizedLoading}
-          nonce={props.nonce}
-          data-nscript="beforeInteractive"
-          crossOrigin={props.crossOrigin || crossOrigin}
-        />
-      )
-    })
-
-  return (
-    <>
-      {webWorkerScripts}
-      {beforeInteractiveScripts}
-    </>
-  )
-}
-
 function getHeadHTMLProps(props: HeadProps) {
   const { crossOrigin, nonce, ...restProps } = props
 
@@ -554,61 +525,99 @@ export class Head extends React.Component<HeadProps> {
     ]
   }
 
-  getOrderedBeforeInteractiveScripts(disableRuntimeJS: boolean) {
-    const {
-      scriptLoader,
-      disableOptimizedLoading,
-      crossOrigin: contextCrossOrigin,
-    } = this.context
-    const { nonce, crossOrigin } = this.props
+  getBeforeInteractiveScripts(disableRuntimeJS: boolean) {
+    const { disableOptimizedLoading, scriptLoader } = this.context
+    let beforeInteractiveScripts: {
+      orderedBeforeInteractiveScripts: JSX.Element[]
+      beforeInteractiveInlineScripts: JSX.Element[]
+      beforeInteractiveSrcScripts: JSX.Element[]
+    } = {
+      orderedBeforeInteractiveScripts: [],
+      beforeInteractiveInlineScripts: [],
+      beforeInteractiveSrcScripts: [],
+    }
 
-    return (scriptLoader.beforeInteractive || [])
-      .filter((script) => typeof script.order === 'number')
-      .sort((pre, next) => pre.order - next.order)
-      .map((script: ScriptProps, index: number): JSX.Element | null => {
-        if (
-          !script.src &&
-          (script.dangerouslySetInnerHTML || script.children)
-        ) {
-          return this.renderBeforeInteractiveInlineScript(script, index)
-        } else if (
-          script.src &&
-          !disableOptimizedLoading &&
-          !disableRuntimeJS
-        ) {
-          const { strategy, ...scriptProps } = script
-
-          return (
-            <script
-              {...scriptProps}
-              key={scriptProps.src || index}
-              defer={scriptProps.defer ?? !disableOptimizedLoading}
-              nonce={nonce}
-              data-nscript="beforeInteractive"
-              crossOrigin={crossOrigin || contextCrossOrigin}
-            />
-          )
-        } else {
-          return null
-        }
-      })
-  }
-
-  getBeforeInteractiveInlineScripts() {
-    const { scriptLoader } = this.context
-    const isInlineScriptWithoutOrder = (script: ScriptProps) =>
+    const isBeforeInteractiveInlineScripts = (script: ScriptProps) =>
       !script.src &&
       (script.dangerouslySetInnerHTML || script.children) &&
       script.order === undefined
+    const isOrderedBeforeInteractiveInlineScripts = (script: ScriptProps) =>
+      !script.src &&
+      (script.dangerouslySetInnerHTML || script.children) &&
+      typeof script.order === 'number'
+    const isBeforeInteractiveSrcScripts = (script: ScriptProps) =>
+      script.src && script.order === undefined
+    const isOrderedBeforeInteractiveSrcScripts = (script: ScriptProps) =>
+      script.src && typeof script.order === 'number'
 
-    return (scriptLoader.beforeInteractive || [])
-      .filter((script) => isInlineScriptWithoutOrder(script))
-      .map((script: ScriptProps, index: number) =>
-        this.renderBeforeInteractiveInlineScript(script, index)
-      )
+    ;(scriptLoader.beforeInteractive || [])
+      .sort((prev, next) => {
+        // Order by the order prop, the rest without the order prop keep the same order
+        if (
+          typeof prev.order === 'undefined' &&
+          typeof next.order === 'undefined'
+        )
+          return 0
+        else if (typeof prev.order === 'undefined') return 1
+        else if (typeof next.order === 'undefined') return -1
+        else return prev.order - next.order
+      })
+      .forEach((script: ScriptProps, index: number) => {
+        if (isBeforeInteractiveInlineScripts(script)) {
+          beforeInteractiveScripts.beforeInteractiveInlineScripts.push(
+            this.getBeforeInteractiveInlineScript(script, index)
+          )
+        }
+
+        if (isOrderedBeforeInteractiveInlineScripts(script)) {
+          beforeInteractiveScripts.orderedBeforeInteractiveScripts.push(
+            this.getBeforeInteractiveInlineScript(script, index)
+          )
+        }
+
+        if (
+          !disableOptimizedLoading &&
+          !disableRuntimeJS &&
+          isOrderedBeforeInteractiveSrcScripts(script)
+        ) {
+          beforeInteractiveScripts.orderedBeforeInteractiveScripts.push(
+            this.getBeforeInteractiveSrcScripts(script, index)
+          )
+        }
+
+        if (
+          !disableOptimizedLoading &&
+          !disableRuntimeJS &&
+          isBeforeInteractiveSrcScripts(script)
+        ) {
+          beforeInteractiveScripts.beforeInteractiveSrcScripts.push(
+            this.getBeforeInteractiveSrcScripts(script, index)
+          )
+        }
+      })
+
+    return beforeInteractiveScripts
   }
 
-  renderBeforeInteractiveInlineScript(script: ScriptProps, index: number) {
+  getBeforeInteractiveSrcScripts(script: ScriptProps, index: number) {
+    const { disableOptimizedLoading, crossOrigin: contextCrossOrigin } =
+      this.context
+    const { nonce, crossOrigin } = this.props
+    const { strategy, ...scriptProps } = script
+
+    return (
+      <script
+        {...scriptProps}
+        key={scriptProps.src || index}
+        defer={scriptProps.defer ?? !disableOptimizedLoading}
+        nonce={nonce}
+        data-nscript="beforeInteractive"
+        crossOrigin={crossOrigin || contextCrossOrigin}
+      />
+    )
+  }
+
+  getBeforeInteractiveInlineScript(script: ScriptProps, index: number) {
     const { nonce, crossOrigin } = this.props
     const { strategy, children, dangerouslySetInnerHTML, src, ...scriptProps } =
       script
@@ -639,10 +648,6 @@ export class Head extends React.Component<HeadProps> {
 
   getDynamicChunks(files: DocumentFiles) {
     return getDynamicChunks(this.context, this.props, files)
-  }
-
-  getPreNextScripts() {
-    return getPreNextScripts(this.context, this.props)
   }
 
   getScripts(files: DocumentFiles) {
@@ -819,6 +824,12 @@ export class Head extends React.Component<HeadProps> {
       assetPrefix
     )
 
+    const {
+      orderedBeforeInteractiveScripts,
+      beforeInteractiveInlineScripts,
+      beforeInteractiveSrcScripts,
+    } = this.getBeforeInteractiveScripts(disableRuntimeJS)
+
     return (
       <head {...getHeadHTMLProps(this.props)}>
         {this.context.isDevelopment && (
@@ -909,8 +920,8 @@ export class Head extends React.Component<HeadProps> {
                 href={canonicalBase + getAmpPath(ampPath, dangerousAsPath)}
               />
             )}
-            {this.getBeforeInteractiveInlineScripts()}
-            {this.getOrderedBeforeInteractiveScripts(disableRuntimeJS)}
+            {beforeInteractiveInlineScripts}
+            {orderedBeforeInteractiveScripts}
             {!optimizeCss && this.getCssLinks(files)}
             {!optimizeCss && <noscript data-n-css={this.props.nonce ?? ''} />}
 
@@ -927,7 +938,10 @@ export class Head extends React.Component<HeadProps> {
 
             {!disableOptimizedLoading &&
               !disableRuntimeJS &&
-              this.getPreNextScripts()}
+              getPreNextWorkerScripts(this.context, this.props)}
+            {!disableOptimizedLoading &&
+              !disableRuntimeJS &&
+              beforeInteractiveSrcScripts}
             {!disableOptimizedLoading &&
               !disableRuntimeJS &&
               this.getDynamicChunks(files)}
@@ -1015,8 +1029,28 @@ export class NextScript extends React.Component<OriginProps> {
     return getDynamicChunks(this.context, this.props, files)
   }
 
-  getPreNextScripts() {
-    return getPreNextScripts(this.context, this.props)
+  getBeforeInteractiveSrcScripts() {
+    const { scriptLoader } = this.context
+
+    ;(scriptLoader.beforeInteractive || [])
+      .filter((script) => script.src)
+      .map((script: ScriptProps, index: number) => {
+        const { disableOptimizedLoading, crossOrigin: contextCrossOrigin } =
+          this.context
+        const { nonce, crossOrigin } = this.props
+        const { strategy, ...scriptProps } = script
+
+        return (
+          <script
+            {...scriptProps}
+            key={scriptProps.src || index}
+            defer={scriptProps.defer ?? !disableOptimizedLoading}
+            nonce={nonce}
+            data-nscript="beforeInteractive"
+            crossOrigin={crossOrigin || contextCrossOrigin}
+          />
+        )
+      })
   }
 
   getScripts(files: DocumentFiles) {
@@ -1157,7 +1191,10 @@ export class NextScript extends React.Component<OriginProps> {
           this.getPolyfillScripts()}
         {disableOptimizedLoading &&
           !disableRuntimeJS &&
-          this.getPreNextScripts()}
+          getPreNextWorkerScripts(this.context, this.props)}
+        {disableOptimizedLoading &&
+          !disableRuntimeJS &&
+          this.getBeforeInteractiveSrcScripts()}
         {disableOptimizedLoading &&
           !disableRuntimeJS &&
           this.getDynamicChunks(files)}
