@@ -293,6 +293,16 @@ const runTests = (isDev = false) => {
       if (browser) await browser.close()
     }
   })
+
+  it('should render script with order prop in source code under beforeInteractive strategy', async () => {
+    const html = await renderViaHTTP(appPort, '/page11')
+    const $ = cheerio.load(html)
+
+    expect($(`#id-1 ~ script[id*="id-"]`).length).toBe(3)
+    expect($(`#id-2 ~ script[id*="id-"]`).length).toBe(2)
+    expect($(`#id-3 ~ script[id*="id-"]`).length).toBe(1)
+    expect($(`#id-4 ~ script[id*="id-"]`).length).toBe(0)
+  })
 }
 
 describe('Next.js Script - Primary Strategies - Strict Mode', () => {

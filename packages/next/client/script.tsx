@@ -12,6 +12,7 @@ const LoadCache = new Set()
 
 export interface ScriptProps extends ScriptHTMLAttributes<HTMLScriptElement> {
   strategy?: 'afterInteractive' | 'lazyOnload' | 'beforeInteractive' | 'worker'
+  order?: number
   id?: string
   onLoad?: (e: any) => void
   onReady?: () => void | null
@@ -31,6 +32,7 @@ const ignoreProps = [
   'children',
   'onError',
   'strategy',
+  'order',
 ]
 
 const loadScript = (props: ScriptProps): void => {
