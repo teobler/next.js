@@ -303,6 +303,18 @@ const runTests = (isDev = false) => {
     expect($(`#id-3 ~ script[id*="id-"]`).length).toBe(1)
     expect($(`#id-4 ~ script[id*="id-"]`).length).toBe(0)
   })
+
+  it('should render inline script first and then third-party scripts when order prop has conflict', async () => {
+    const html = await renderViaHTTP(appPort, '/page12')
+    const $ = cheerio.load(html)
+
+    expect($(`#id-1 ~ script[id*="id-"]`).length).toBe(5)
+    expect($(`#id-2 ~ script[id*="id-"]`).length).toBe(4)
+    expect($(`#id-3 ~ script[id*="id-"]`).length).toBe(3)
+    expect($(`#id-4 ~ script[id*="id-"]`).length).toBe(2)
+    expect($(`#id-5 ~ script[id*="id-"]`).length).toBe(1)
+    expect($(`#id-6 ~ script[id*="id-"]`).length).toBe(0)
+  })
 }
 
 describe('Next.js Script - Primary Strategies - Strict Mode', () => {

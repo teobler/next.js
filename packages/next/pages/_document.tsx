@@ -553,6 +553,10 @@ export class Head extends React.Component<HeadProps> {
     ;(scriptLoader.beforeInteractive || [])
       .sort((prev, next) => {
         // Order by the order prop, the rest without the order prop keep the same order
+        // If two scripts has same order:
+        // - both are inline scripts, keep order as source code
+        // - inline scripts with third-party scripts, inline scripts will be previous one
+        // - both are third party scripts, keep order as source code
         if (
           typeof prev.order === 'undefined' &&
           typeof next.order === 'undefined'
@@ -560,6 +564,18 @@ export class Head extends React.Component<HeadProps> {
           return 0
         else if (typeof prev.order === 'undefined') return 1
         else if (typeof next.order === 'undefined') return -1
+        else if (
+          prev.order === next.order &&
+          isOrderedBeforeInteractiveInlineScripts(prev) &&
+          isOrderedBeforeInteractiveSrcScripts(next)
+        )
+          return -1
+        else if (
+          prev.order === next.order &&
+          isOrderedBeforeInteractiveInlineScripts(next) &&
+          isOrderedBeforeInteractiveSrcScripts(prev)
+        )
+          return 1
         else return prev.order - next.order
       })
       .forEach((script: ScriptProps, index: number) => {
